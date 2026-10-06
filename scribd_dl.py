@@ -184,8 +184,10 @@ def write_jpeg_pdf(images, out_path: str):
             (b"<< /Type /XObject /Subtype /Image /Width %d /Height %d "
              b"/ColorSpace %s /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\n"
              b"stream\n" % (w, h, cs, len(data)) + data + b"\nendstream"))
+        content = ("q %d 0 0 %d 0 0 cm /Im0 Do Q" % (w, h)).encode()
         bodies.append(
-            ("q %d 0 0 %d 0 0 cm /Im0 Do Q" % (w, h)).encode())
+            (b"<< /Length %d >>\nstream\n" % len(content)
+             + content + b"\nendstream"))
     out, offsets = [b"%PDF-1.4\n"], []
     for idx, body in enumerate(bodies, start=1):
         offsets.append(sum(len(x) for x in out))
