@@ -17,8 +17,6 @@ try:
 except ImportError:
     sys.exit("missing dependency: pip install -r requirements.txt")
 
-UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 TIMEOUT = 30
 
 JSONP_RE = re.compile(r'https?://[^\s"\'\\]+\.jsonp')
@@ -35,12 +33,12 @@ class ScribdError(Exception):
 
 
 def _session(referer=None):
+    # NOTE: no browser User-Agent here on purpose. Scribd's bot check
+    # (Fastly) challenges requests whose UA claims to be a browser but
+    # whose TLS handshake isn't one (python-requests can't fake that),
+    # while plain requests with the default UA pass through fine.
+    # Upstream scribd-downloader does the same: bare requests.get().
     s = requests.Session()
-    s.headers.update({
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-    })
     if referer:
         s.headers["Referer"] = referer
     return s
@@ -245,8 +243,8 @@ def download_scribd(url: str, output=None, no_progress: bool = False) -> str:
         raise ScribdError(f"page fetch failed: HTTP {r.status_code}")
     if is_challenge(r.text):
         raise ScribdError("scribd showed a browser check (\"Client Challenge\"). "
-                          "It blocks datacenter/VPN IPs — retry from a home network, "
-                          "or open the link once in a browser and try again later")
+                          "Wait a few minutes and retry — firing many requests "
+                          "in a row gets flagged")
     if "everand.com" in r.url:
         raise ScribdError("scribd redirected to Everand — only free documents are supported")
 
@@ -305,6 +303,8 @@ def download_scribd(url: str, output=None, no_progress: bool = False) -> str:
                 f.write(_get_bytes(s, u, f"page {i}", no_progress))
             files.append(path)
         out = _resolve_output(output, f"{title}.pdf")
+        if os.path.splitext(out)[1].lower() in (".md", ".txt"):
+            print(f"[!] note: {out} will contain PDF data (image document)")
         if _combine_images(files, out):
             print(f"[OK] saved {out} ({os.path.getsize(out)} bytes)")
             return out
