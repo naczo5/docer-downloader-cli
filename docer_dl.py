@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""docer-downloader-cli: paste a docer link, get the file.
-
-Replicates what seszele64/docer-downloader browser extension does:
-  1. GET the doc page, parse data-id / data-ext / data-size from #iframe2 / #iframe1
-  2. POST https://<domain>/start/show  -> JSON with direct stream URL
-  3. Download the stream URL (this bypasses the >1MB payment wall,
-     which is what the extension's data-pdf-url trick relies on).
+"""docer-downloader-cli: paste a docer or scribd link, get the file.
 
 Usage:
   python docer_dl.py "https://docer.pl/doc/s00nxc5"
   python docer_dl.py "https://docer.pl/doc/s00nxc5" -o out.pdf
-  python docer_dl.py "https://docer.pl/doc/s00nxc5" --captcha-token <recaptcha-token>
+  python docer_dl.py "https://www.scribd.com/document/55949937/33-Strategies-of-War"
 
   After `pip install .` (or `pip install git+https://github.com/naczo5/docer-downloader-cli`):
   docer-dl "https://docer.pl/doc/s00nxc5"
@@ -33,7 +27,11 @@ try:
 except ImportError:
     sys.exit("missing dependency: pip install -r requirements.txt")
 
-SUPPORTED_DOMAINS = ("docer.pl", "docer.ar", "docer.com.ar", "docero.de", "doceru.com")
+from scribd_dl import ScribdError, download_scribd
+
+DOCER_DOMAINS = ("docer.pl", "docer.ar", "docer.com.ar", "docero.de", "doceru.com")
+SCRIBD_DOMAINS = ("scribd.com",)
+SUPPORTED_DOMAINS = DOCER_DOMAINS + SCRIBD_DOMAINS
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 BROWSER_HEADERS = {
     "User-Agent": UA,
@@ -48,8 +46,8 @@ def is_block_page(html_text: str) -> bool:
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Download documents from docer.* by pasting the link")
-    p.add_argument("url", help="docer document URL, e.g. https://docer.pl/doc/s00nxc5")
+    p = argparse.ArgumentParser(description="Download documents from docer.* and scribd.com by pasting the link")
+    p.add_argument("url", help="document URL, e.g. https://docer.pl/doc/s00nxc5 or a scribd.com document link")
     p.add_argument("-o", "--output", default=None, help="output file path (default: auto from title)")
     p.add_argument("--captcha-token", default=None,
                    help="reCAPTCHA token if server demands captcha (solve in browser, pass token here)")
@@ -67,7 +65,9 @@ def normalize_url(url: str):
         url = "https://" + url
     parts = urllib.parse.urlparse(url)
     domain = parts.netloc.lower().split(":")[0].removeprefix("www.")
-    if domain not in SUPPORTED_DOMAINS:
+    if domain in SCRIBD_DOMAINS:
+        return "scribd", domain, None, url
+    if domain not in DOCER_DOMAINS:
         sys.exit(f"unsupported domain '{parts.netloc}'. Supported: {', '.join(SUPPORTED_DOMAINS)}")
     m = re.search(r"/doc/([A-Za-z0-9]+)", parts.path)
     if not m:
@@ -75,7 +75,7 @@ def normalize_url(url: str):
     doc_id = m.group(1)
     base = f"https://{domain}"
     page_url = f"{base}/doc/{doc_id}"
-    return base, domain, doc_id, page_url
+    return "docer", domain, doc_id, page_url
 
 
 def extract_attrs(page_html: str, doc_id_fallback: str):
@@ -216,8 +216,16 @@ def solve_image_captcha(session, base: str, page_url: str,
 
 def main():
     args = parse_args()
-    base, domain, doc_id, page_url = normalize_url(args.url)
+    kind, domain, doc_id, page_url = normalize_url(args.url)
 
+    if kind == "scribd":
+        try:
+            download_scribd(page_url, output=args.output, no_progress=args.no_progress)
+        except ScribdError as e:
+            sys.exit(f"[-] {e}")
+        return
+
+    base = f"https://{domain}"
     s = requests.Session()
     s.headers.update(BROWSER_HEADERS)
 

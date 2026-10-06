@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "docer-downloader-cli"
 version = "0.1.0"
-description = "Paste a docer link, get the file. No browser extension needed."
+description = "Paste a docer or scribd link, get the file. No browser extension needed."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
