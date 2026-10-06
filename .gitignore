@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.egg-info/
+.venv/
+venv/
+docer-captcha.png
+captcha*.png
+*.pdf
